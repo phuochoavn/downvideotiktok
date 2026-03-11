@@ -54,6 +54,28 @@ function markAsDownloaded(url) {
   downloadHistory.add(url);
 }
 
+// ===== Quality Preference Persistence =====
+async function loadQualityPref() {
+  return new Promise((resolve) => {
+    if (chrome.storage && chrome.storage.local) {
+      chrome.storage.local.get(['qualityPref'], (result) => {
+        if (result.qualityPref && qualitySelect) {
+          qualitySelect.value = result.qualityPref;
+        }
+        resolve();
+      });
+    } else {
+      resolve();
+    }
+  });
+}
+
+function saveQualityPref() {
+  if (chrome.storage && chrome.storage.local && qualitySelect) {
+    chrome.storage.local.set({ qualityPref: qualitySelect.value });
+  }
+}
+
 // ===== Utils =====
 const SUPPORTED_DOMAINS = [
   'tiktok.com', 'vm.tiktok.com',
@@ -485,14 +507,24 @@ function renderQueue() {
       thumbHtml = `<div class="qi-placeholder">${platform.icon}</div>`;
     }
 
-    // Info
+    // Info + resolution badge
     let infoHtml;
     if (item.data) {
       const author = `@${item.data.author?.unique_id || item.data.author?.nickname || 'unknown'}`;
       const title = item.data.title || 'Không có mô tả';
+      // Resolution/source badge
+      let badge = '';
+      if (item.data._cobalt) {
+        badge = `<span class="qi-badge cobalt">⚡ cobalt</span>`;
+      } else if (item.data.hdplay) {
+        const w = item.data.width || 0;
+        const h = item.data.height || 0;
+        const res = h >= 1080 ? '1080p' : h >= 720 ? '720p' : h > 0 ? `${h}p` : 'HD';
+        badge = `<span class="qi-badge">${res}</span>`;
+      }
       infoHtml = `
         <div class="qi-info">
-          <div class="qi-author">${platform.icon} ${escapeHtml(author)}</div>
+          <div class="qi-author">${platform.icon} ${escapeHtml(author)} ${badge}</div>
           <div class="qi-title">${escapeHtml(title)}</div>
         </div>`;
     } else {
@@ -837,6 +869,7 @@ if (downloadAllBest) {
 if (qualitySelect) {
   qualitySelect.addEventListener('change', () => {
     updateDownloadBtnLabel();
+    saveQualityPref();
   });
 }
 
@@ -860,9 +893,63 @@ if (closeBtn) {
   });
 }
 
+// ===== Nhận URL từ nút tải trên trang TikTok =====
+chrome.runtime.onMessage.addListener((request) => {
+  if (request.type === 'SIDEPANEL_ADD_URL' && request.url) {
+    const formatted = autoFormatUrls(request.url);
+    if (!formatted) return;
+
+    if (urlTextarea.value.trim()) {
+      urlTextarea.value = urlTextarea.value.trimEnd() + '\n' + formatted;
+    } else {
+      urlTextarea.value = formatted;
+    }
+    urlTextarea.dispatchEvent(new Event('input'));
+    showStatus(`🎵 Link từ TikTok đã thêm!`, 'success');
+
+    // Auto-fetch nếu đang bật auto-download
+    if (autoDownloadToggle.checked) {
+      clearTimeout(autoDebounceTimer);
+      autoDebounceTimer = setTimeout(async () => {
+        const urls = parseUrlsFromText(urlTextarea.value);
+        if (urls.length > 0) {
+          hideStatus();
+          addToQueue(urls);
+          renderQueue();
+          await fetchAllVideoInfo();
+        }
+      }, 800);
+    }
+  }
+});
+
+// ===== Lấy URL từ tab đang mở =====
+const grabTabBtn = document.getElementById('grabTabBtn');
+if (grabTabBtn) {
+  grabTabBtn.addEventListener('click', () => {
+    chrome.runtime.sendMessage({ type: 'GET_CURRENT_TAB_URL' }, (response) => {
+      if (response && response.success && response.url && isValidVideoUrl(response.url)) {
+        const formatted = autoFormatUrls(response.url);
+        if (formatted) {
+          if (urlTextarea.value.trim()) {
+            urlTextarea.value = urlTextarea.value.trimEnd() + '\n' + formatted;
+          } else {
+            urlTextarea.value = formatted;
+          }
+          urlTextarea.dispatchEvent(new Event('input'));
+          showStatus('✅ Đã lấy link từ tab hiện tại', 'success');
+        }
+      } else {
+        showStatus('Tab hiện tại không phải video hỗ trợ', 'info');
+      }
+    });
+  });
+}
+
 // ===== Init =====
 (async () => {
   await loadHistory();
+  await loadQualityPref();
   updateDownloadBtnLabel();
   urlTextarea.focus();
 })();

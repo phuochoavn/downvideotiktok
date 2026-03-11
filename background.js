@@ -23,6 +23,29 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       .catch(err => sendResponse({ success: false, error: err.message }));
     return true;
   }
+
+  // FAB trên trang TikTok gửi URL để thêm vào side panel
+  if (request.type === 'EXVIDEO_ADD_URL') {
+    // Broadcast đến tất cả extension views (side panel)
+    chrome.runtime.sendMessage({
+      type: 'SIDEPANEL_ADD_URL',
+      url: request.url
+    }).catch(() => {}); // Side panel có thể chưa mở
+    sendResponse({ success: true });
+    return false;
+  }
+
+  // Side panel yêu cầu URL tab đang active
+  if (request.type === 'GET_CURRENT_TAB_URL') {
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (tabs && tabs.length > 0) {
+        sendResponse({ success: true, url: tabs[0].url });
+      } else {
+        sendResponse({ success: false });
+      }
+    });
+    return true;
+  }
 });
 
 /**

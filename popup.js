@@ -539,9 +539,9 @@ async function retryFailed() {
 
 // ===== Auto-format URLs =====
 function autoFormatUrls(rawText) {
-  // Tìm tất cả link TikTok trong text (kể cả nằm cùng dòng, cách bởi dấu cách/phẩy/tab)
+  // Chỉ lấy link TikTok, bỏ hết text khác
   const matches = rawText.match(/https?:\/\/[^\s,;"'<>]*tiktok[^\s,;"'<>]*/gi);
-  if (!matches || matches.length === 0) return rawText;
+  if (!matches || matches.length === 0) return '';
 
   // Loại duplicate, mỗi link 1 dòng
   const unique = [...new Set(matches)];
@@ -550,13 +550,17 @@ function autoFormatUrls(rawText) {
 
 // ===== Event Listeners =====
 
-// Paste trực tiếp vào textarea — auto-format
+// Paste trực tiếp vào textarea — auto-format chỉ lấy link TikTok
 urlTextarea.addEventListener('paste', (e) => {
   e.preventDefault();
   const rawText = e.clipboardData.getData('text');
   const formatted = autoFormatUrls(rawText);
 
-  // Nếu đã có nội dung, thêm xuống dòng mới
+  if (!formatted) {
+    showStatus('Không tìm thấy link TikTok trong clipboard', 'error');
+    return;
+  }
+
   if (urlTextarea.value.trim()) {
     urlTextarea.value = urlTextarea.value.trimEnd() + '\n' + formatted;
   } else {
@@ -565,20 +569,13 @@ urlTextarea.addEventListener('paste', (e) => {
   urlTextarea.dispatchEvent(new Event('input'));
 });
 
-// Paste button (nút clipboard)
-pasteBtn.addEventListener('click', async () => {
-  try {
-    const text = await navigator.clipboard.readText();
-    const formatted = autoFormatUrls(text);
-
-    if (urlTextarea.value.trim()) {
-      urlTextarea.value = urlTextarea.value.trimEnd() + '\n' + formatted;
-    } else {
-      urlTextarea.value = formatted;
-    }
-    urlTextarea.dispatchEvent(new Event('input'));
-  } catch (err) {
-    showStatus('Không thể đọc clipboard', 'error');
+// Paste button — focus textarea rồi paste bằng execCommand (hoạt động trong Side Panel)
+pasteBtn.addEventListener('click', () => {
+  urlTextarea.focus();
+  // execCommand('paste') sẽ trigger sự kiện 'paste' ở trên → auto-format
+  const ok = document.execCommand('paste');
+  if (!ok) {
+    showStatus('Hãy dán trực tiếp bằng Ctrl+V vào ô nhập link', 'info');
   }
 });
 

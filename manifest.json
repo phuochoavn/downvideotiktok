@@ -1,8 +1,8 @@
 {
     "manifest_version": 3,
-    "name": "ExVideo - TikTok Downloader",
-    "version": "2.1.0",
-    "description": "Tải video TikTok chất lượng cao nhất, không watermark. Batch download + auto-detect!",
+    "name": "ExVideo - Multi-Platform Video Downloader",
+    "version": "3.0.0",
+    "description": "Tải video từ TikTok, Facebook, Instagram, YouTube, Twitter — không watermark, batch download!",
     "permissions": [
         "downloads",
         "storage",
@@ -12,7 +12,10 @@
     ],
     "host_permissions": [
         "https://www.tikwm.com/*",
-        "*://*.tiktok.com/*"
+        "*://*.tiktok.com/*",
+        "https://api.cobalt.tools/*",
+        "https://cobalt-api.kwiatekmiki.com/*",
+        "https://cobalt.canine.tools/*"
     ],
     "background": {
         "service_worker": "background.js"

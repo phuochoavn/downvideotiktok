@@ -55,8 +55,38 @@ function markAsDownloaded(url) {
 }
 
 // ===== Utils =====
-function isValidTikTokUrl(url) {
+const SUPPORTED_DOMAINS = [
+  'tiktok.com', 'vm.tiktok.com',
+  'facebook.com', 'fb.watch', 'fb.com', 'www.facebook.com',
+  'instagram.com', 'www.instagram.com',
+  'youtube.com', 'youtu.be', 'www.youtube.com', 'youtube.com/shorts',
+  'twitter.com', 'x.com',
+  'reddit.com', 'www.reddit.com',
+  'pinterest.com', 'pin.it',
+  'vimeo.com',
+];
+
+function isValidVideoUrl(url) {
+  try {
+    return SUPPORTED_DOMAINS.some(domain => url.toLowerCase().includes(domain));
+  } catch { return false; }
+}
+
+function isTikTokUrl(url) {
   return /tiktok\.com/i.test(url) || /vm\.tiktok\.com/i.test(url);
+}
+
+function getPlatformInfo(url) {
+  const u = url.toLowerCase();
+  if (u.includes('tiktok.com')) return { icon: '🎵', name: 'TikTok' };
+  if (u.includes('facebook.com') || u.includes('fb.watch') || u.includes('fb.com')) return { icon: '📘', name: 'Facebook' };
+  if (u.includes('instagram.com')) return { icon: '📷', name: 'Instagram' };
+  if (u.includes('youtube.com') || u.includes('youtu.be')) return { icon: '🎥', name: 'YouTube' };
+  if (u.includes('twitter.com') || u.includes('x.com')) return { icon: '🐦', name: 'Twitter/X' };
+  if (u.includes('reddit.com')) return { icon: '🤖', name: 'Reddit' };
+  if (u.includes('pinterest.com') || u.includes('pin.it')) return { icon: '📌', name: 'Pinterest' };
+  if (u.includes('vimeo.com')) return { icon: '🎬', name: 'Vimeo' };
+  return { icon: '🌐', name: 'Video' };
 }
 
 function formatNumber(num) {
@@ -81,6 +111,8 @@ function sleep(ms) {
 }
 
 // ===== Parse URLs =====
+const URL_PATTERN = /https?:\/\/[^\s,;"'<>]*(tiktok|facebook|fb\.watch|fb\.com|instagram|youtube|youtu\.be|twitter|x\.com|reddit|pinterest|pin\.it|vimeo)[^\s,;"'<>]*/gi;
+
 function parseUrlsFromText(text) {
   const lines = text.split(/[\n\r]+/);
   const urls = [];
@@ -90,13 +122,21 @@ function parseUrlsFromText(text) {
     const trimmed = line.trim();
     if (!trimmed) continue;
 
-    // Trích xuất URL từ dòng (có thể chứa text khác)
-    const urlMatch = trimmed.match(/https?:\/\/[^\s,;"'<>]+tiktok[^\s,;"'<>]*/i);
-    const url = urlMatch ? urlMatch[0] : trimmed;
-
-    if (isValidTikTokUrl(url) && !seen.has(url)) {
-      seen.add(url);
-      urls.push(url);
+    // Tìm tất cả URLs hợp lệ trong dòng
+    const matches = trimmed.match(URL_PATTERN);
+    if (matches) {
+      for (const url of matches) {
+        if (isValidVideoUrl(url) && !seen.has(url)) {
+          seen.add(url);
+          urls.push(url);
+        }
+      }
+    } else {
+      // Thử xem nguyên dòng có phải URL không
+      if (isValidVideoUrl(trimmed) && !seen.has(trimmed)) {
+        seen.add(trimmed);
+        urls.push(trimmed);
+      }
     }
   }
   return urls;
@@ -114,7 +154,7 @@ function parseUrlsFromExcel(workbook) {
       for (const cell of row) {
         if (typeof cell !== 'string') continue;
         const trimmed = cell.trim();
-        if (isValidTikTokUrl(trimmed) && !seen.has(trimmed)) {
+        if (isValidVideoUrl(trimmed) && !seen.has(trimmed)) {
           seen.add(trimmed);
           urls.push(trimmed);
         }
@@ -124,28 +164,120 @@ function parseUrlsFromExcel(workbook) {
   return urls;
 }
 
-// ===== API: TikWM =====
-async function fetchVideoInfo(url) {
+// ===== API: TikWM (TikTok only) =====
+async function fetchVideoInfoTikWM(url) {
   const apiUrl = `https://www.tikwm.com/api/?url=${encodeURIComponent(url)}`;
   
   const response = await fetch(apiUrl, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-    }
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' }
   });
 
-  if (!response.ok) {
-    throw new Error(`API lỗi: ${response.status}`);
-  }
+  if (!response.ok) throw new Error(`TikWM lỗi: ${response.status}`);
 
   const data = await response.json();
-  
-  if (data.code !== 0) {
-    throw new Error(data.msg || 'Không thể xử lý video này');
-  }
+  if (data.code !== 0) throw new Error(data.msg || 'TikWM không xử lý được');
 
   return data.data;
+}
+
+// ===== API: Cobalt (Multi-platform) =====
+const COBALT_ENDPOINTS = [
+  'https://api.cobalt.tools',
+  'https://cobalt-api.kwiatekmiki.com',
+  'https://cobalt.canine.tools',
+];
+
+async function fetchVideoInfoCobalt(url, quality = '1080') {
+  const qualityMap = { best: 'max', '1080': '1080', hd: '720', sd: '480' };
+  const videoQuality = qualityMap[quality] || '1080';
+
+  for (const endpoint of COBALT_ENDPOINTS) {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url: url,
+          videoQuality: videoQuality,
+          filenameStyle: 'basic',
+          downloadMode: 'auto',
+        }),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+
+      if (!response.ok) continue;
+
+      const data = await response.json();
+
+      if (data.status === 'error') continue;
+
+      if (data.status === 'tunnel' || data.status === 'redirect') {
+        return {
+          cobaltUrl: data.url,
+          cobaltFilename: data.filename || '',
+          source: 'cobalt',
+          endpoint: endpoint,
+        };
+      }
+
+      if (data.status === 'picker' && data.picker && data.picker.length > 0) {
+        // Lấy video đầu tiên từ picker
+        const first = data.picker[0];
+        return {
+          cobaltUrl: first.url,
+          cobaltFilename: data.filename || '',
+          source: 'cobalt_picker',
+          endpoint: endpoint,
+        };
+      }
+    } catch (e) {
+      continue; // Thử endpoint tiếp theo
+    }
+  }
+
+  throw new Error('Cobalt không khả dụng');
+}
+
+// ===== Unified Fetch =====
+async function fetchVideoInfo(url) {
+  const platform = getPlatformInfo(url);
+  
+  // TikTok: thử TikWM trước (nhanh, ổn định)
+  if (isTikTokUrl(url)) {
+    try {
+      const data = await fetchVideoInfoTikWM(url);
+      data._platform = platform;
+      return data;
+    } catch (e) {
+      // Fallback sang cobalt
+    }
+  }
+
+  // Tất cả platform: dùng cobalt
+  const selectedQuality = qualitySelect ? qualitySelect.value : 'hd';
+  try {
+    const cobaltData = await fetchVideoInfoCobalt(url, selectedQuality);
+    return {
+      id: Date.now().toString(),
+      author: { unique_id: platform.name.toLowerCase() },
+      title: `${platform.icon} ${platform.name} Video`,
+      play: cobaltData.cobaltUrl,
+      hdplay: cobaltData.cobaltUrl,
+      _cobalt: cobaltData,
+      _platform: platform,
+    };
+  } catch (e) {
+    throw new Error(`Không thể tải từ ${platform.name}`);
+  }
 }
 
 // ===== Cascade Engine =====
@@ -283,12 +415,13 @@ function triggerDownload(url, filename) {
 }
 
 function getFilename(data, quality) {
-  const authorName = (data.author?.unique_id || data.author?.nickname || 'tiktok')
+  const platform = data._platform || getPlatformInfo('');
+  const authorName = (data.author?.unique_id || data.author?.nickname || platform.name.toLowerCase())
     .replace(/[^a-zA-Z0-9_.\-]/g, '_');
   const videoId = data.id || Date.now();
   const suffixMap = { best: '_BEST', '1080': '_1080p', hd: '_HD', sd: '_SD' };
   const suffix = suffixMap[quality] || '_HD';
-  return `TikTok/${authorName}_${videoId}${suffix}.mp4`;
+  return `ExVideo/${authorName}_${videoId}${suffix}.mp4`;
 }
 
 // ===== Queue Management =====
@@ -340,13 +473,16 @@ function renderQueue() {
     const el = document.createElement('div');
     el.className = `queue-item ${item.status}`;
 
-    // Thumbnail or placeholder
+    // Thumbnail or placeholder with platform icon
     let thumbHtml;
+    const platform = item.data?._platform || getPlatformInfo(item.url);
     if (item.data) {
       const thumbUrl = item.data.origin_cover || item.data.cover || '';
-      thumbHtml = `<img class="qi-thumb" src="${thumbUrl}" alt="">`;
+      thumbHtml = thumbUrl 
+        ? `<img class="qi-thumb" src="${thumbUrl}" alt="">`
+        : `<div class="qi-placeholder">${platform.icon}</div>`;
     } else {
-      thumbHtml = `<div class="qi-placeholder">${i + 1}</div>`;
+      thumbHtml = `<div class="qi-placeholder">${platform.icon}</div>`;
     }
 
     // Info
@@ -356,14 +492,14 @@ function renderQueue() {
       const title = item.data.title || 'Không có mô tả';
       infoHtml = `
         <div class="qi-info">
-          <div class="qi-author">${escapeHtml(author)}</div>
+          <div class="qi-author">${platform.icon} ${escapeHtml(author)}</div>
           <div class="qi-title">${escapeHtml(title)}</div>
         </div>`;
     } else {
       const shortUrl = item.url.length > 45 ? item.url.substring(0, 45) + '...' : item.url;
       infoHtml = `
         <div class="qi-info">
-          <div class="qi-url">${escapeHtml(shortUrl)}</div>
+          <div class="qi-url">${platform.icon} ${escapeHtml(shortUrl)}</div>
           ${item.error ? `<div class="qi-title" style="color:#fca5a5">${escapeHtml(item.error)}</div>` : ''}
         </div>`;
     }
@@ -539,11 +675,10 @@ async function retryFailed() {
 
 // ===== Auto-format URLs =====
 function autoFormatUrls(rawText) {
-  // Chỉ lấy link TikTok, bỏ hết text khác
-  const matches = rawText.match(/https?:\/\/[^\s,;"'<>]*tiktok[^\s,;"'<>]*/gi);
+  // Chỉ lấy link từ các platform hỗ trợ
+  const matches = rawText.match(URL_PATTERN);
   if (!matches || matches.length === 0) return '';
 
-  // Loại duplicate, mỗi link 1 dòng
   const unique = [...new Set(matches)];
   return unique.join('\n');
 }

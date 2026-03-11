@@ -58,7 +58,22 @@
   - Tự theo dõi clipboard mỗi 0.5s
   - Auto-collect link TikTok, loại trùng
   - "Copy tất cả" → paste vào ExVideo
-  - Build EXE bằng PyInstaller
+  - Build EXE bằng PyInstaller (`tools/TikTokCollector.exe`, 11.4 MB)
+
+### Buổi tối: Multi-Platform v3.0
+- **cobalt.tools API** — hỗ trợ tải video từ 8 nền tảng:
+  - 🎵 TikTok | 📘 Facebook | 📷 Instagram | 🎥 YouTube
+  - 🐦 Twitter/X | 🤖 Reddit | 📌 Pinterest | 🎬 Vimeo
+- 3 cobalt endpoints fallback (`api.cobalt.tools`, `cobalt-api.kwiatekmiki.com`, `cobalt.canine.tools`)
+- **Unified fetch engine**: TikTok → TikWM trước → cobalt fallback | Các platform khác → cobalt
+- Mở rộng URL regex: `URL_PATTERN` hỗ trợ tất cả domain
+- `getPlatformInfo()`: auto-detect platform → hiện icon trong queue
+- `autoFormatUrls()`: lọc link từ tất cả platform (không chỉ TikTok)
+- Download folder: `TikTok/` → `ExVideo/`
+- Manifest v3.0.0 + host_permissions cho cobalt
+- UI: subtitle "TikTok • Facebook • Instagram • YouTube"
+- **Push GitHub**: Commit `b839498`: v3.0-multi-platform
+- **Cập nhật docs**: PROJECT_INFO.md, ROADMAP.md, DEVELOPMENT_JOURNAL.md
 
 ---
 
@@ -68,3 +83,4 @@
 |-----|-----------|-----|
 | Paste không hoạt động trong Side Panel | `navigator.clipboard` bị chặn | Dùng `execCommand('paste')` |
 | Paste dán cả text rác | `autoFormatUrls` trả rawText khi không có TikTok URL | Trả `''` + hiện thông báo lỗi |
+| Stray `}` sau renderQueue edit | Multi-replace tạo thừa brace | Xóa dòng thừa |

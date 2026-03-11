@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ExVideo — Batch TikTok Downloader</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <div class="logo">
+        <svg width="28" height="28" viewBox="0 0 28 28" fill="none">
+          <rect width="28" height="28" rx="8" fill="url(#grad)"/>
+          <path d="M9 19V9l10 5-10 5z" fill="white"/>
+          <defs>
+            <linearGradient id="grad" x1="0" y1="0" x2="28" y2="28">
+              <stop stop-color="#FF0050"/>
+              <stop offset="1" stop-color="#00F2EA"/>
+            </linearGradient>
+          </defs>
+        </svg>
+      </div>
+      <div class="header-text">
+        <h1>ExVideo <span class="version-badge">v2.0</span></h1>
+        <p class="subtitle">Batch download — không watermark</p>
+      </div>
+    </div>
+
+    <!-- Input Section -->
+    <div class="input-section">
+      <div class="textarea-wrapper">
+        <textarea 
+          id="urlTextarea" 
+          placeholder="Dán nhiều link TikTok vào đây (mỗi dòng 1 link)..."
+          spellcheck="false"
+          rows="4"
+        ></textarea>
+        <button id="pasteBtn" class="icon-btn paste-btn" title="Dán từ clipboard">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M10.5 1h-5A1.5 1.5 0 004 2.5v1A1.5 1.5 0 005.5 5h5A1.5 1.5 0 0012 3.5v-1A1.5 1.5 0 0010.5 1zM5.5 2h5a.5.5 0 01.5.5v1a.5.5 0 01-.5.5h-5a.5.5 0 01-.5-.5v-1a.5.5 0 01.5-.5z"/>
+            <path d="M3 3.5A1.5 1.5 0 011.5 2h1V1h-1A2.5 2.5 0 000 3.5v10A2.5 2.5 0 002.5 16h11a2.5 2.5 0 002.5-2.5v-10A2.5 2.5 0 0013.5 1h-1v1h1A1.5 1.5 0 0115 3.5v10a1.5 1.5 0 01-1.5 1.5h-11A1.5 1.5 0 011 13.5v-10z"/>
+          </svg>
+        </button>
+      </div>
+
+      <div class="auto-toggle-row">
+        <label class="toggle-label" for="autoDownload">
+          <span class="toggle-text">Tự động tải HD</span>
+          <div class="toggle-switch">
+            <input type="checkbox" id="autoDownload">
+            <span class="toggle-slider"></span>
+          </div>
+        </label>
+      </div>
+
+      <div class="action-row">
+        <button id="importBtn" class="import-btn" title="Import từ Excel/CSV">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+            <path d="M14 4.5V14a2 2 0 01-2 2H4a2 2 0 01-2-2V2a2 2 0 012-2h5.5L14 4.5zM9.5 1H4a1 1 0 00-1 1v12a1 1 0 001 1h8a1 1 0 001-1V5h-3.5V1z"/>
+            <path d="M5.884 6.68a.5.5 0 01.632-.316l1.484.474 1.484-.474a.5.5 0 01.632.316.5.5 0 01-.316.632L8.5 7.78v.94l1.3.468a.5.5 0 11-.316.948L8 9.668l-1.484.468a.5.5 0 01-.316-.948l1.3-.468v-.94L6.2 7.312a.5.5 0 01-.316-.632z"/>
+          </svg>
+          <span>Import Excel/CSV</span>
+        </button>
+        <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" class="hidden">
+        <button id="fetchBtn" class="fetch-btn" disabled>
+          <span class="btn-text">Lấy Video</span>
+          <div class="spinner hidden"></div>
+        </button>
+      </div>
+    </div>
+
+    <!-- Status Message -->
+    <div id="statusMsg" class="status-msg hidden"></div>
+
+    <!-- Queue Section -->
+    <div id="queueSection" class="queue-section hidden">
+      <div class="queue-header">
+        <div class="queue-title">
+          <span>Danh sách video</span>
+          <span id="queueCounter" class="queue-counter">0/0</span>
+        </div>
+        <div class="queue-header-actions">
+          <button id="retryBtn" class="icon-btn retry-btn hidden" title="Thử lại link lỗi">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M11.534 7h3.932a.25.25 0 01.192.41l-1.966 2.36a.25.25 0 01-.384 0l-1.966-2.36A.25.25 0 0111.534 7z"/>
+              <path fill-rule="evenodd" d="M8 3c-1.552 0-2.94.707-3.857 1.818a.5.5 0 11-.771-.636A6.002 6.002 0 0114 8a.5.5 0 01-1 0 5 5 0 00-5-5zM2.5 7.5a.5.5 0 01.5.5 5 5 0 008.857 3.182.5.5 0 11.771.636A6.002 6.002 0 012 8a.5.5 0 01.5-.5z"/>
+            </svg>
+          </button>
+          <button id="clearQueueBtn" class="icon-btn clear-btn" title="Xóa tất cả">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M5.5 5.5A.5.5 0 016 6v6a.5.5 0 01-1 0V6a.5.5 0 01.5-.5zm2.5 0a.5.5 0 01.5.5v6a.5.5 0 01-1 0V6a.5.5 0 01.5-.5zm3 .5a.5.5 0 00-1 0v6a.5.5 0 001 0V6z"/>
+              <path fill-rule="evenodd" d="M14.5 3a1 1 0 01-1 1H13v9a2 2 0 01-2 2H5a2 2 0 01-2-2V4h-.5a1 1 0 010-2H6a1 1 0 011-1h2a1 1 0 011 1h3.5a1 1 0 011 1zM4.118 4L4 4.059V13a1 1 0 001 1h6a1 1 0 001-1V4.059L11.882 4H4.118zM7 1.5a.5.5 0 00-.5.5h3a.5.5 0 00-.5-.5H7z"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div id="queueList" class="queue-list"></div>
+      <div class="batch-actions">
+        <button id="downloadAllHD" class="download-btn primary" disabled>
+          <svg width="16" height="16" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 2v10M5 8l4 4 4-4M3 14h12"/>
+          </svg>
+          Tải tất cả HD
+        </button>
+        <button id="downloadAllSD" class="download-btn secondary" disabled>
+          <svg width="16" height="16" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 2v10M5 8l4 4 4-4M3 14h12"/>
+          </svg>
+          Tải tất cả SD
+        </button>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      <span>ExVideo v2.0 — Batch Mode</span>
+    </div>
+  </div>
+
+  <script src="libs/xlsx.mini.min.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

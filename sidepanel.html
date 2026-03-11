@@ -24,8 +24,8 @@
           </svg>
         </div>
         <div class="header-text">
-          <h1>ExVideo <span class="version-badge">v2.0</span></h1>
-          <p class="subtitle">Batch download — không watermark</p>
+          <h1>ExVideo <span class="version-badge">v2.1</span></h1>
+          <p class="subtitle">Chất lượng cao nhất — không watermark</p>
         </div>
       </div>
       <button id="closeBtn" class="close-btn" title="Đóng panel">
@@ -52,9 +52,18 @@
         </button>
       </div>
 
-      <div class="auto-toggle-row">
+      <div class="options-row">
+        <div class="quality-select-wrapper">
+          <label class="option-label" for="qualitySelect">Chất lượng:</label>
+          <select id="qualitySelect">
+            <option value="best">🏆 Cao nhất</option>
+            <option value="1080">📺 1080p</option>
+            <option value="hd" selected>🎬 HD</option>
+            <option value="sd">📱 SD</option>
+          </select>
+        </div>
         <label class="toggle-label" for="autoDownload">
-          <span class="toggle-text">Tự động tải HD</span>
+          <span class="toggle-text">Tự động tải</span>
           <div class="toggle-switch">
             <input type="checkbox" id="autoDownload">
             <span class="toggle-slider"></span>
@@ -105,24 +114,18 @@
       </div>
       <div id="queueList" class="queue-list"></div>
       <div class="batch-actions">
-        <button id="downloadAllHD" class="download-btn primary" disabled>
+        <button id="downloadAllBest" class="download-btn primary" disabled>
           <svg width="16" height="16" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M9 2v10M5 8l4 4 4-4M3 14h12"/>
           </svg>
-          Tải tất cả HD
-        </button>
-        <button id="downloadAllSD" class="download-btn secondary" disabled>
-          <svg width="16" height="16" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M9 2v10M5 8l4 4 4-4M3 14h12"/>
-          </svg>
-          Tải tất cả SD
+          <span id="downloadBtnLabel">Tải tất cả (HD)</span>
         </button>
       </div>
     </div>
 
     <!-- Footer -->
     <div class="footer">
-      <span>ExVideo v2.0 — Side Panel</span>
+      <span>ExVideo v2.1 — Quality Cascade</span>
     </div>
   </div>
 

@@ -150,10 +150,51 @@ body {
   background: rgba(0, 242, 234, 0.1);
 }
 
-/* ===== Auto Toggle ===== */
-.auto-toggle-row {
+/* ===== Options Row ===== */
+.options-row {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.quality-select-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.option-label {
+  font-size: 12px;
+  color: #71717a;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+#qualitySelect {
+  background: #18181b;
+  border: 1px solid #27272a;
+  color: #e4e4e7;
+  border-radius: 6px;
+  padding: 5px 8px;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+#qualitySelect:hover {
+  border-color: #3f3f46;
+}
+
+#qualitySelect:focus {
+  border-color: #FF0050;
+}
+
+#qualitySelect option {
+  background: #18181b;
+  color: #e4e4e7;
 }
 
 .toggle-label {

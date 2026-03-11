@@ -9,13 +9,14 @@ const queueSection = document.getElementById('queueSection');
 const queueList = document.getElementById('queueList');
 const queueCounter = document.getElementById('queueCounter');
 const clearQueueBtn = document.getElementById('clearQueueBtn');
-const downloadAllHD = document.getElementById('downloadAllHD');
-const downloadAllSD = document.getElementById('downloadAllSD');
+const downloadAllBest = document.getElementById('downloadAllBest');
+const downloadBtnLabel = document.getElementById('downloadBtnLabel');
 const autoDownloadToggle = document.getElementById('autoDownload');
 const retryBtn = document.getElementById('retryBtn');
+const qualitySelect = document.getElementById('qualitySelect');
 
 // ===== State =====
-/** @type {Array<{url: string, status: 'pending'|'fetching'|'ready'|'downloading'|'done'|'error'|'skipped', data: object|null, error: string|null}>} */
+/** @type {Array<{url: string, status: 'pending'|'fetching'|'ready'|'downloading'|'done'|'error'|'skipped', data: object|null, cascadeData: object|null, error: string|null}>} */
 let queue = [];
 let autoDebounceTimer = null;
 /** @type {Set<string>} URLs đã tải thành công (persistent) */
@@ -123,7 +124,7 @@ function parseUrlsFromExcel(workbook) {
   return urls;
 }
 
-// ===== API =====
+// ===== API: TikWM =====
 async function fetchVideoInfo(url) {
   const apiUrl = `https://www.tikwm.com/api/?url=${encodeURIComponent(url)}`;
   
@@ -145,6 +146,122 @@ async function fetchVideoInfo(url) {
   }
 
   return data.data;
+}
+
+// ===== Cascade Engine =====
+// Thử lấy video data từ nhiều nguồn, chọn URL có bitrate cao nhất
+async function fetchCascadeData(url) {
+  const results = { tikwm: null, pageParse: null, tiktokApi: null };
+
+  // Tiếp cận 1: Parse trang TikTok (đang mở)
+  try {
+    if (chrome.runtime && chrome.runtime.sendMessage) {
+      const response = await new Promise((resolve) => {
+        chrome.runtime.sendMessage(
+          { type: 'GET_TIKTOK_PAGE_DATA', url },
+          (resp) => resolve(resp)
+        );
+      });
+      if (response && response.success && response.data) {
+        results.pageParse = response.data;
+      }
+    }
+  } catch (e) { /* Page parse không khả dụng */ }
+
+  // Tiếp cận 2: TikTok Internal API
+  const selectedQuality = qualitySelect ? qualitySelect.value : 'hd';
+  if (selectedQuality === 'best' || selectedQuality === '1080') {
+    try {
+      const videoIdMatch = url.match(/video\/(\d+)/);
+      if (videoIdMatch && chrome.runtime && chrome.runtime.sendMessage) {
+        const response = await new Promise((resolve) => {
+          chrome.runtime.sendMessage(
+            { type: 'FETCH_TIKTOK_API', videoId: videoIdMatch[1] },
+            (resp) => resolve(resp)
+          );
+        });
+        if (response && response.success && response.data) {
+          results.tiktokApi = response.data;
+        }
+      }
+    } catch (e) { /* Internal API không khả dụng */ }
+  }
+
+  return results;
+}
+
+/**
+ * Chọn URL tốt nhất dựa trên quality preference và cascade data
+ */
+function getBestDownloadUrl(tikwmData, cascadeData, quality) {
+  const candidates = [];
+
+  // TikWM candidates
+  if (tikwmData) {
+    if (tikwmData.hdplay) {
+      candidates.push({ url: tikwmData.hdplay, bitrate: 2000000, source: 'tikwm_hd' });
+    }
+    if (tikwmData.play) {
+      candidates.push({ url: tikwmData.play, bitrate: 1000000, source: 'tikwm_sd' });
+    }
+  }
+
+  // Page parse candidates
+  if (cascadeData && cascadeData.pageParse) {
+    const pp = cascadeData.pageParse;
+    if (pp.qualityLevels && pp.qualityLevels.length > 0) {
+      for (const ql of pp.qualityLevels) {
+        if (ql.url) {
+          candidates.push({ url: ql.url, bitrate: ql.bitrate || 0, source: 'page_parse', width: ql.width, height: ql.height });
+        }
+      }
+    } else if (pp.bestUrl) {
+      candidates.push({ url: pp.bestUrl, bitrate: pp.bestBitrate || 3000000, source: 'page_parse' });
+    }
+  }
+
+  // TikTok API candidates
+  if (cascadeData && cascadeData.tiktokApi) {
+    const api = cascadeData.tiktokApi;
+    if (api.qualityLevels && api.qualityLevels.length > 0) {
+      for (const ql of api.qualityLevels) {
+        if (ql.url) {
+          candidates.push({ url: ql.url, bitrate: ql.bitrate || 0, source: 'tiktok_api', width: ql.width, height: ql.height });
+        }
+      }
+    } else if (api.bestUrl) {
+      candidates.push({ url: api.bestUrl, bitrate: api.bestBitrate || 3000000, source: 'tiktok_api' });
+    }
+  }
+
+  if (candidates.length === 0) return null;
+
+  // Filter theo quality preference
+  let filtered = candidates;
+  if (quality === 'sd') {
+    // Chọn bitrate thấp nhất
+    filtered.sort((a, b) => a.bitrate - b.bitrate);
+    return filtered[0];
+  } else if (quality === 'hd') {
+    // Chọn TikWM HD hoặc tương đương
+    const tikwmHd = filtered.find(c => c.source === 'tikwm_hd');
+    return tikwmHd || filtered.sort((a, b) => b.bitrate - a.bitrate)[0];
+  } else {
+    // 'best' hoặc '1080': chọn bitrate cao nhất
+    filtered.sort((a, b) => b.bitrate - a.bitrate);
+    return filtered[0];
+  }
+}
+
+function getQualityLabel(quality) {
+  const labels = { best: 'Cao nhất', '1080': '1080p', hd: 'HD', sd: 'SD' };
+  return labels[quality] || 'HD';
+}
+
+function updateDownloadBtnLabel() {
+  if (downloadBtnLabel && qualitySelect) {
+    downloadBtnLabel.textContent = `Tải tất cả (${getQualityLabel(qualitySelect.value)})`;
+  }
 }
 
 // ===== Download =====
@@ -169,7 +286,8 @@ function getFilename(data, quality) {
   const authorName = (data.author?.unique_id || data.author?.nickname || 'tiktok')
     .replace(/[^a-zA-Z0-9_.\-]/g, '_');
   const videoId = data.id || Date.now();
-  const suffix = quality === 'hd' ? '_HD' : '_SD';
+  const suffixMap = { best: '_BEST', '1080': '_1080p', hd: '_HD', sd: '_SD' };
+  const suffix = suffixMap[quality] || '_HD';
   return `TikTok/${authorName}_${videoId}${suffix}.mp4`;
 }
 
@@ -183,11 +301,11 @@ function addToQueue(urls) {
     if (existingUrls.has(url)) continue;
 
     if (isAlreadyDownloaded(url)) {
-      queue.push({ url, status: 'skipped', data: null, error: null });
+      queue.push({ url, status: 'skipped', data: null, cascadeData: null, error: null });
       existingUrls.add(url);
       skipped++;
     } else {
-      queue.push({ url, status: 'pending', data: null, error: null });
+      queue.push({ url, status: 'pending', data: null, cascadeData: null, error: null });
       existingUrls.add(url);
       added++;
     }
@@ -211,8 +329,7 @@ function renderQueue() {
   queueCounter.textContent = `${doneCount}/${queue.length}`;
 
   const hasReadyItems = queue.some(q => q.status === 'ready');
-  downloadAllHD.disabled = !hasReadyItems;
-  downloadAllSD.disabled = !hasReadyItems;
+  if (downloadAllBest) downloadAllBest.disabled = !hasReadyItems;
 
   // Hiện nút Retry nếu có link lỗi
   const hasErrors = queue.some(q => q.status === 'error');
@@ -298,6 +415,14 @@ async function fetchAllVideoInfo() {
       item.data = await fetchVideoInfo(item.url);
       item.status = 'ready';
       successCount++;
+
+      // Cascade: lấy thêm data từ page/API (không block)
+      const selectedQuality = qualitySelect ? qualitySelect.value : 'hd';
+      if (selectedQuality === 'best' || selectedQuality === '1080') {
+        try {
+          item.cascadeData = await fetchCascadeData(item.url);
+        } catch (e) { /* cascade fail = ok, có TikWM rồi */ }
+      }
     } catch (err) {
       item.status = 'error';
       item.error = err.message || 'Lỗi không xác định';
@@ -310,9 +435,10 @@ async function fetchAllVideoInfo() {
     await sleep(500);
   }
 
-  // Auto-download HD nếu toggle bật
+  // Auto-download nếu toggle bật
   if (autoDownloadToggle.checked && successCount > 0) {
-    await downloadAll('hd');
+    const quality = qualitySelect ? qualitySelect.value : 'hd';
+    await downloadAll(quality);
   }
 
   // Reset UI
@@ -334,8 +460,7 @@ async function downloadAll(quality) {
   const readyItems = queue.filter(q => q.status === 'ready');
   if (readyItems.length === 0) return;
 
-  downloadAllHD.disabled = true;
-  downloadAllSD.disabled = true;
+  if (downloadAllBest) downloadAllBest.disabled = true;
 
   let successCount = 0;
 
@@ -345,9 +470,16 @@ async function downloadAll(quality) {
     item.status = 'downloading';
     renderQueue();
 
-    const url = quality === 'hd' 
-      ? (item.data.hdplay || item.data.play) 
-      : item.data.play;
+    // Dùng cascade engine để chọn URL tốt nhất
+    const best = getBestDownloadUrl(item.data, item.cascadeData, quality);
+    
+    let url;
+    if (best && best.url) {
+      url = best.url;
+    } else {
+      // Fallback về TikWM
+      url = quality === 'sd' ? item.data.play : (item.data.hdplay || item.data.play);
+    }
 
     if (!url) {
       item.status = 'error';
@@ -561,9 +693,20 @@ fetchBtn.addEventListener('click', async () => {
   await fetchAllVideoInfo();
 });
 
-// Download all buttons
-downloadAllHD.addEventListener('click', () => downloadAll('hd'));
-downloadAllSD.addEventListener('click', () => downloadAll('sd'));
+// Download all button
+if (downloadAllBest) {
+  downloadAllBest.addEventListener('click', () => {
+    const quality = qualitySelect ? qualitySelect.value : 'hd';
+    downloadAll(quality);
+  });
+}
+
+// Quality selector change
+if (qualitySelect) {
+  qualitySelect.addEventListener('change', () => {
+    updateDownloadBtnLabel();
+  });
+}
 
 // Retry failed
 retryBtn.addEventListener('click', () => retryFailed());
@@ -588,5 +731,6 @@ if (closeBtn) {
 // ===== Init =====
 (async () => {
   await loadHistory();
+  updateDownloadBtnLabel();
   urlTextarea.focus();
 })();
